@@ -48,8 +48,9 @@ public class CsvExporter {
 
 	private static PreparedStatement createStatement(Connection conn) throws SQLException {
 
-		return conn.prepareStatement(
-				"select r.comp_code, r.year, r.sales, r.ebitda, r.rd, r.ni, count(*) vc, sum(n.wc) wc from report r inner join report_new_vocab n on r.comp_code = n.comp_code and r.year = n.year group by comp_code, year order by r.comp_code, r.year");
+		return conn.prepareStatement("select r.comp_code, r.year, r.sales, r.ebitda, r.rd, count(*), r.vc_sec1 "
+				+ "from report r inner join report_word w inner join vocab v on r.comp_code = w.comp_code and r.year = w.year and v.vocab_id = w.vocab_id "
+				+ "where r.year > 2000 and r.year < 2015 and r.active = 1 and v.available = 1 and w.section = 1 " + "group by r.comp_code, r.year");
 	}
 
 	/**
