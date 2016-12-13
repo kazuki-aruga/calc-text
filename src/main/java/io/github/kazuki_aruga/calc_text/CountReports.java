@@ -13,9 +13,9 @@ import org.apache.commons.logging.LogFactory;
  * Hello world!
  *
  */
-public class App {
+public class CountReports {
 
-	private static final Log log = LogFactory.getLog(App.class);
+	private static final Log log = LogFactory.getLog(CountReports.class);
 
 	public static void main(String[] args) throws SQLException {
 
@@ -48,8 +48,10 @@ public class App {
 
 	private static int countSections(Connection conn, int vocabId) throws SQLException {
 
-		try (PreparedStatement stmt = conn.prepareStatement(
-				"select count(*) from (select comp_code, year, section from report_word where vocab_id = ? group by comp_code, year, section) tmp")) {
+		try (PreparedStatement stmt = conn.prepareStatement("select count(*) from (" //
+				+ "select rw.comp_code, rw.year, rw.section " //
+				+ "from report_word rw inner join report r on rw.comp_code = r.comp_code and rw.year = r.year " //
+				+ "where r.active = 1 and rw.vocab_id = ? group by rw.comp_code, rw.year, rw.section) tmp")) {
 
 			stmt.setInt(1, vocabId);
 
@@ -67,8 +69,10 @@ public class App {
 
 	private static int countReports(Connection conn, int vocabId) throws SQLException {
 
-		try (PreparedStatement stmt = conn.prepareStatement(
-				"select count(*) from (select comp_code, year, section from report_word where vocab_id = ? group by comp_code, year) tmp")) {
+		try (PreparedStatement stmt = conn.prepareStatement("select count(*) from (" //
+				+ "select rw.comp_code, rw.year, rw.section " //
+				+ "from report_word rw inner join report r on rw.comp_code = r.comp_code and rw.year = r.year " //
+				+ "where r.active = 1 and rw.vocab_id = ? group by rw.comp_code, rw.year) tmp")) {
 
 			stmt.setInt(1, vocabId);
 

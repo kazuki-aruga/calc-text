@@ -80,7 +80,7 @@ public class ReportWordCount {
 	private static List<Report> listReport(Connection conn) throws SQLException {
 
 		try (PreparedStatement stmt = conn
-				.prepareStatement("select comp_code, year from report order by comp_code, year")) {
+				.prepareStatement("select comp_code, year from report where active = 1 order by comp_code, year")) {
 
 			try (ResultSet rs = stmt.executeQuery()) {
 
