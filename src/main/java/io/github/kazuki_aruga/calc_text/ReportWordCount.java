@@ -41,10 +41,11 @@ public class ReportWordCount {
 				final int wcSec1 = selectWordCount(conn, report, 1);
 				final int wcSec2 = selectWordCount(conn, report, 2);
 				final int vcSec1 = selectVocabCount(conn, report, 1);
+				final int newVcSec1 = selectNewVocabCount(conn, report);
 				final int vcSec2 = selectVocabCount(conn, report, 2);
 				final int vcTotal = selectVocabCount(conn, report);
 
-				if (!updateReport(conn, report, wcSec1, wcSec2, wcSec1 + wcSec2, vcSec1, vcSec2, vcTotal)) {
+				if (!updateReport(conn, report, wcSec1, wcSec2, wcSec1 + wcSec2, vcSec1, newVcSec1, vcSec2, vcTotal)) {
 
 					log.warn("更新に失敗しました：comp_code=" + report.getCompCode() + ",year=" + report.getYear());
 				}
@@ -59,19 +60,20 @@ public class ReportWordCount {
 	}
 
 	private static boolean updateReport(Connection conn, Report report, int wcSec1, int wcSec2, int wcTotal, int vcSec1,
-			int vcSec2, int vcTotal) throws SQLException {
+			int newVcSec1, int vcSec2, int vcTotal) throws SQLException {
 
 		try (PreparedStatement stmt = conn.prepareStatement(
-				"update report set wc_sec1 = ?, wc_sec2 = ?, wc_total = ?, vc_sec1 = ?, vc_sec2 = ?, vc_total = ? where comp_code = ? and year = ?")) {
+				"update report set wc_sec1 = ?, wc_sec2 = ?, wc_total = ?, vc_sec1 = ?, new_vc_sec1 = ?, vc_sec2 = ?, vc_total = ? where comp_code = ? and year = ?")) {
 
 			stmt.setInt(1, wcSec1);
 			stmt.setInt(2, wcSec2);
 			stmt.setInt(3, wcTotal);
 			stmt.setInt(4, vcSec1);
-			stmt.setInt(5, vcSec2);
-			stmt.setInt(6, vcTotal);
-			stmt.setString(7, report.getCompCode());
-			stmt.setInt(8, report.getYear());
+			stmt.setInt(5, newVcSec1);
+			stmt.setInt(6, vcSec2);
+			stmt.setInt(7, vcTotal);
+			stmt.setString(8, report.getCompCode());
+			stmt.setInt(9, report.getYear());
 
 			return 1 == stmt.executeUpdate();
 		}
@@ -147,6 +149,36 @@ public class ReportWordCount {
 
 		try (PreparedStatement stmt = conn.prepareStatement(
 				"select count(*) from (select v.vocab_id from report_word r inner join vocab v on r.vocab_id = v.vocab_id where v.available = 1 and r.comp_code = ? and year = ? group by v.vocab_id) tmp")) {
+
+			stmt.setString(1, report.getCompCode());
+			stmt.setInt(2, report.getYear());
+
+			try (ResultSet rs = stmt.executeQuery()) {
+
+				if (rs.next()) {
+
+					return rs.getInt(1);
+				}
+			}
+		}
+
+		throw new IllegalStateException("あり得ない状態");
+	}
+
+	/**
+	 * 【対処すべき課題】に出現した、過去の有報の【対処すべき課題】または【研究開発活動】に存在しない語彙の数を返す。
+	 * 
+	 * @param conn
+	 * @param report
+	 * @return
+	 * @throws SQLException
+	 */
+	private static int selectNewVocabCount(Connection conn, Report report) throws SQLException {
+
+		try (PreparedStatement stmt = conn.prepareStatement("select count(*) from ( " + //
+				"select vocab_id from report_word rw1 where comp_code = ? and year = ? and section = 1 and not exists ( "
+				+ "select * from report_word where comp_code = rw1.comp_code and year < rw1.year and vocab_id = rw1.vocab_id) and exists ( "
+				+ "select * from vocab where vocab_id = rw1.vocab_id and available = 1) group by comp_code, year, section, vocab_id) tmp")) {
 
 			stmt.setString(1, report.getCompCode());
 			stmt.setInt(2, report.getYear());
