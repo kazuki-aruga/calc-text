@@ -49,15 +49,18 @@ public class CsvExporter {
 	private static PreparedStatement createStatement(Connection conn) throws SQLException {
 
 		// 満足化基準のデータ
-		// return conn.prepareStatement("select comp_code, year, sales, ebitda,
-		// rd, wc_sec1, vc_sec1 "
-		// + "from report where year > 2000 and year < 2015 and active = 1");
+		return conn.prepareStatement("select comp_code, year, sales, ebitda, rd, wc_sec1, vc_sec1 "
+				+ "from report where year > 2000 and year < 2015 and active = 1");
 
 		// 課題のデータ
-		return conn.prepareStatement(
-				"select r.comp_code, r.year, r.sales, r.rd, r.ebitda, r.vc_sec1, r.new_vc_sec1 from report r inner join ( "
-						+ "select comp_code, max(year) max_year, min(year) min_year, count(*) cnt from report where active = 1 and year < 2015 group by comp_code having count(*) > 10) t "
-						+ "on r.comp_code = t.comp_code " + "where r.year >= t.min_year + 3");
+		// return conn.prepareStatement(
+		// "select r.comp_code, r.year, r.sales, r.rd, r.ebitda, r.vc_sec1,
+		// r.new_vc_sec1, r.past_rd_new_vc_sec1 from report r inner join ( "
+		// + "select comp_code, max(year) max_year, min(year) min_year, count(*)
+		// cnt from report where active = 1 and year < 2015 group by comp_code
+		// having count(*) > 10) t "
+		// + "on r.comp_code = t.comp_code " + "where r.year >= t.min_year +
+		// 3");
 	}
 
 	/**
