@@ -41,11 +41,14 @@ public class ReportWordCount {
 				final int wcSec1 = selectWordCount(conn, report, 1);
 				final int wcSec2 = selectWordCount(conn, report, 2);
 				final int vcSec1 = selectVocabCount(conn, report, 1);
-				final int newVcSec1 = selectNewVocabCount(conn, report);
+				final int newVcSec1 = selectNewVocabCount(conn, report, 1);
+				final int pastRdNewVcSec1 = selectPastRdCount(conn, report);
 				final int vcSec2 = selectVocabCount(conn, report, 2);
+				final int newVcSec2 = selectNewVocabCount(conn, report, 2);
 				final int vcTotal = selectVocabCount(conn, report);
 
-				if (!updateReport(conn, report, wcSec1, wcSec2, wcSec1 + wcSec2, vcSec1, newVcSec1, vcSec2, vcTotal)) {
+				if (!updateReport(conn, report, wcSec1, wcSec2, wcSec1 + wcSec2, vcSec1, newVcSec1, pastRdNewVcSec1,
+						vcSec2, newVcSec2, vcTotal)) {
 
 					log.warn("更新に失敗しました：comp_code=" + report.getCompCode() + ",year=" + report.getYear());
 				}
@@ -60,20 +63,24 @@ public class ReportWordCount {
 	}
 
 	private static boolean updateReport(Connection conn, Report report, int wcSec1, int wcSec2, int wcTotal, int vcSec1,
-			int newVcSec1, int vcSec2, int vcTotal) throws SQLException {
+			int newVcSec1, int pastRdNewVcSec1, int vcSec2, int newVcSec2, int vcTotal) throws SQLException {
 
 		try (PreparedStatement stmt = conn.prepareStatement(
-				"update report set wc_sec1 = ?, wc_sec2 = ?, wc_total = ?, vc_sec1 = ?, new_vc_sec1 = ?, vc_sec2 = ?, vc_total = ? where comp_code = ? and year = ?")) {
+				"update report set wc_sec1 = ?, wc_sec2 = ?, wc_total = ?, vc_sec1 = ?, new_vc_sec1 = ?, past_rd_new_vc_sec1 = ?, vc_sec2 = ?, new_vc_sec2 = ?, vc_total = ? where comp_code = ? and year = ?")) {
 
-			stmt.setInt(1, wcSec1);
-			stmt.setInt(2, wcSec2);
-			stmt.setInt(3, wcTotal);
-			stmt.setInt(4, vcSec1);
-			stmt.setInt(5, newVcSec1);
-			stmt.setInt(6, vcSec2);
-			stmt.setInt(7, vcTotal);
-			stmt.setString(8, report.getCompCode());
-			stmt.setInt(9, report.getYear());
+			int i = 0;
+
+			stmt.setInt(++i, wcSec1);
+			stmt.setInt(++i, wcSec2);
+			stmt.setInt(++i, wcTotal);
+			stmt.setInt(++i, vcSec1);
+			stmt.setInt(++i, newVcSec1);
+			stmt.setInt(++i, pastRdNewVcSec1);
+			stmt.setInt(++i, vcSec2);
+			stmt.setInt(++i, newVcSec2);
+			stmt.setInt(++i, vcTotal);
+			stmt.setString(++i, report.getCompCode());
+			stmt.setInt(++i, report.getYear());
 
 			return 1 == stmt.executeUpdate();
 		}
@@ -82,7 +89,7 @@ public class ReportWordCount {
 	private static List<Report> listReport(Connection conn) throws SQLException {
 
 		try (PreparedStatement stmt = conn
-				.prepareStatement("select comp_code, year from report where active = 1 order by comp_code, year")) {
+				.prepareStatement("select comp_code, year from report order by comp_code, year")) {
 
 			try (ResultSet rs = stmt.executeQuery()) {
 
@@ -106,7 +113,8 @@ public class ReportWordCount {
 	private static int selectWordCount(Connection conn, Report report, int sec) throws SQLException {
 
 		try (PreparedStatement stmt = conn.prepareStatement(
-				"select count(*) from report_word r inner join vocab v on r.vocab_id = v.vocab_id where v.available = 1 and r.comp_code = ? and year = ? and r.section = ?;")) {
+				"select count(*) from report_word r where r.comp_code = ? and year = ? and r.section = ? and exists"
+						+ " (select * from vocab where vocab_id = r.vocab_id and available = 1)")) {
 
 			stmt.setString(1, report.getCompCode());
 			stmt.setInt(2, report.getYear());
@@ -126,8 +134,10 @@ public class ReportWordCount {
 
 	private static int selectVocabCount(Connection conn, Report report, int sec) throws SQLException {
 
-		try (PreparedStatement stmt = conn.prepareStatement(
-				"select count(*) from (select v.vocab_id from report_word r inner join vocab v on r.vocab_id = v.vocab_id where v.available = 1 and r.comp_code = ? and year = ? and r.section = ? group by v.vocab_id) tmp")) {
+		try (PreparedStatement stmt = conn.prepareStatement("select count(*) from (" //
+				+ "select distinct vocab_id from report_word r where comp_code = ? and year = ? and section = ? and exists (" //
+				+ "select * from vocab where vocab_id = r.vocab_id and available = 1)" //
+				+ ") tmp")) {
 
 			stmt.setString(1, report.getCompCode());
 			stmt.setInt(2, report.getYear());
@@ -147,8 +157,10 @@ public class ReportWordCount {
 
 	private static int selectVocabCount(Connection conn, Report report) throws SQLException {
 
-		try (PreparedStatement stmt = conn.prepareStatement(
-				"select count(*) from (select v.vocab_id from report_word r inner join vocab v on r.vocab_id = v.vocab_id where v.available = 1 and r.comp_code = ? and year = ? group by v.vocab_id) tmp")) {
+		try (PreparedStatement stmt = conn.prepareStatement("select count(*) from (" //
+				+ "select distinct vocab_id from report_word r where comp_code = ? and year = ? and exists " //
+				+ "(select * from vocab where vocab_id = r.vocab_id and available = 1)" //
+				+ ") tmp")) {
 
 			stmt.setString(1, report.getCompCode());
 			stmt.setInt(2, report.getYear());
@@ -166,19 +178,42 @@ public class ReportWordCount {
 	}
 
 	/**
-	 * 【対処すべき課題】に出現した、過去の有報の【対処すべき課題】または【研究開発活動】に存在しない語彙の数を返す。
+	 * セクションに初出の語彙の数を返す。
 	 * 
 	 * @param conn
 	 * @param report
 	 * @return
 	 * @throws SQLException
 	 */
-	private static int selectNewVocabCount(Connection conn, Report report) throws SQLException {
+	private static int selectNewVocabCount(Connection conn, Report report, int sec) throws SQLException {
 
-		try (PreparedStatement stmt = conn.prepareStatement("select count(*) from ( " + //
-				"select vocab_id from report_word rw1 where comp_code = ? and year = ? and section = 1 and not exists ( "
-				+ "select * from report_word where comp_code = rw1.comp_code and year < rw1.year and vocab_id = rw1.vocab_id) and exists ( "
-				+ "select * from vocab where vocab_id = rw1.vocab_id and available = 1) group by comp_code, year, section, vocab_id) tmp")) {
+		try (PreparedStatement stmt = conn.prepareStatement("select count(*) from ( " //
+				+ "select distinct vocab_id from report_word r where comp_code = ? and year = ? and section = ? and first_app = 1 and exists " //
+				+ "(select * from vocab where vocab_id = r.vocab_id and available = 1)" //
+				+ ") tmp")) {
+
+			stmt.setString(1, report.getCompCode());
+			stmt.setInt(2, report.getYear());
+			stmt.setInt(3, sec);
+
+			try (ResultSet rs = stmt.executeQuery()) {
+
+				if (rs.next()) {
+
+					return rs.getInt(1);
+				}
+			}
+		}
+
+		throw new IllegalStateException("あり得ない状態");
+	}
+
+	private static int selectPastRdCount(Connection conn, Report report) throws SQLException {
+
+		try (PreparedStatement stmt = conn.prepareStatement("select count(*) from ( " //
+				+ "select distinct vocab_id from report_word r where comp_code = ? and year = ? and section = 1 and first_app = 1 and past_rd = 1 and exists " //
+				+ "(select * from vocab where vocab_id = r.vocab_id and available = 1)" //
+				+ ") tmp")) {
 
 			stmt.setString(1, report.getCompCode());
 			stmt.setInt(2, report.getYear());
@@ -194,5 +229,4 @@ public class ReportWordCount {
 
 		throw new IllegalStateException("あり得ない状態");
 	}
-
 }
